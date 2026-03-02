@@ -1,0 +1,120 @@
+groups:
+  - name: order_billing_alerts
+    rules:
+
+      - alert: KafkaHighFailureRate
+        expr: |
+          rate(billing_kafka_messages_failed_total[5m]) > 0.05
+        for: 2m
+        labels:
+          severity: warning
+          service: billing_service
+        annotations:
+          summary: "High Kafka message failure rate"
+          description: >
+            Topic {{ $labels.topic }} is failing at
+            {{ printf "%.2f" $value }} msg/s for over 2 minutes.
+            Messages are being routed to DLQ.
+
+      - alert: KafkaDLQGrowing
+        expr: |
+          increase(billing_kafka_messages_failed_total[10m]) > 10
+        for: 5m
+        labels:
+          severity: critical
+          service: billing_service
+        annotations:
+          summary: "DLQ is accumulating messages"
+          description: >
+            More than 10 messages sent to DLQ in the last 10 minutes
+            on topic {{ $labels.topic }}.
+            Manual intervention may be required.
+
+      - alert: GRPCHighErrorRate
+        expr: |
+          (
+            rate(order_grpc_requests_total{status!="ok"}[5m])
+            /
+            rate(order_grpc_requests_total[5m])
+          ) > 0.10
+        for: 2m
+        labels:
+          severity: warning
+          service: order_service
+        annotations:
+          summary: "gRPC error rate above 10%"
+          description: >
+            Method {{ $labels.method }} error rate is
+            {{ printf "%.0f" ($value | humanizePercentage) }} over the last 5 minutes.
+
+      - alert: GRPCHighErrorRateBilling
+        expr: |
+          (
+            rate(billing_grpc_requests_total{status!="ok"}[5m])
+            /
+            rate(billing_grpc_requests_total[5m])
+          ) > 0.10
+        for: 2m
+        labels:
+          severity: warning
+          service: billing_service
+        annotations:
+          summary: "gRPC error rate above 10% on billing service"
+          description: >
+            Method {{ $labels.method }} error rate is
+            {{ printf "%.0f" ($value | humanizePercentage) }} over the last 5 minutes.
+    
+      - alert: PendingInvoicesNotBeingPaid
+        expr: |
+          billing_business_invoice_state_total{state="pending"} > 50
+          and
+          rate(billing_business_invoices_paid_total[10m]) == 0
+        for: 10m
+        labels:
+          severity: warning
+          service: billing_service
+        annotations:
+          summary: "Pending invoices accumulating but none being paid"
+          description: >
+            {{ $value }} invoices are stuck in PENDING status
+            with no paid events in the last 10 minutes.
+            Possible issue with order payment processing or Kafka consumer.
+
+      - alert: OrderCreationStopped
+        expr: |
+          rate(order_business_orders_created_total[10m]) == 0
+        for: 15m
+        labels:
+          severity: warning
+          service: order_service
+        annotations:
+          summary: "No new orders being created"
+          description: >
+            Zero orders created in the last 15 minutes.
+            Could indicate an issue with the order service or upstream.
+
+      - alert: DBConnectionPoolNearLimit
+        expr: |
+          order_db_in_use_connections / (order_db_open_connections + 1) > 0.85
+        for: 5m
+        labels:
+          severity: warning
+          service: order_service
+        annotations:
+          summary: "DB connection pool over 85% utilization"
+          description: >
+            DB connection pool utilization is {{ $value | humanizePercentage }}
+            on order_service. Consider increasing pool size.
+
+      - alert: DBConnectionPoolNearLimitBilling
+        expr: |
+          billing_db_in_use_connections / (billing_db_open_connections + 1) > 0.85
+        for: 5m
+        labels:
+          severity: warning
+          service: billing_service
+        annotations:
+          summary: "DB connection pool over 85% utilization (billing)"
+          description: >
+            DB connection pool utilization is {{ $value | humanizePercentage }}
+            on billing_service.

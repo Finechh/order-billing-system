@@ -1,0 +1,63 @@
+syntax = "proto3";
+
+package billing.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "order-billing-system/billing_service/internal/proto/pb;pb";
+
+message Money {
+  int64 amount = 1;
+  string currency = 2;
+}
+
+enum InvoiceStatus {
+  INVOICE_STATUS_UNSPECIFIED = 0;
+  INVOICE_STATUS_PENDING = 1;
+  INVOICE_STATUS_PAID = 2;
+  INVOICE_STATUS_CANCELLED = 3;
+}
+
+message Invoice {
+  string id = 1;
+  string order_id = 2;
+  Money amount = 3;
+  InvoiceStatus status = 4;
+  google.protobuf.Timestamp created_at = 5;
+  google.protobuf.Timestamp paid_at = 6;
+}
+
+message GetInvoiceByOrderRequest {
+  string order_id = 1;
+}
+
+message GetInvoiceResponse {
+  Invoice invoice = 1;
+}
+
+message ListInvoicesRequest {
+  InvoiceStatus status = 1; 
+  int32 limit = 2;
+  int32 offset = 3;
+}
+
+message ListInvoicesResponse {
+  repeated Invoice invoices = 1;
+}
+
+message GetBillingStatsRequest {}
+
+message GetBillingStatsResponse {
+  int64 total_invoices = 1;
+  int64 paid_invoices = 2;
+  int64 pending_invoices = 3;
+  int64 cancelled_invoices = 4;
+
+  Money total_revenue = 5;
+}
+
+service BillingQueryService {
+  rpc GetInvoiceByOrder(GetInvoiceByOrderRequest) returns (GetInvoiceResponse);
+  rpc ListInvoices(ListInvoicesRequest) returns (ListInvoicesResponse);
+  rpc GetBillingStats(GetBillingStatsRequest) returns (GetBillingStatsResponse);
+}

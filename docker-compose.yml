@@ -1,0 +1,130 @@
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.4.0
+    container_name: zookeeper_new
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+    ports:
+      - "2181:2181"
+
+  kafka:
+    image: confluentinc/cp-kafka:7.4.0
+    container_name: kafka_new
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENERS: PLAINTEXT://:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      ALLOW_PLAINTEXT_LISTENER: "yes"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_LOG4J_ROOT_LOGLEVEL: WARN
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    ports:
+      - "9092:9092"
+    depends_on:
+      - zookeeper
+    healthcheck:
+      test: [ "CMD", "kafka-topics", "--bootstrap-server", "localhost:9092", "--list" ]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
+  postgres_order:
+    image: postgres:15
+    container_name: postgres_order
+    environment:
+      POSTGRES_USER: order
+      POSTGRES_PASSWORD: orderpass
+      POSTGRES_DB: order_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - order_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U order -d order_db" ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  postgres_billing:
+    image: postgres:15
+    container_name: postgres_billing
+    environment:
+      POSTGRES_USER: billing
+      POSTGRES_PASSWORD: billingpass
+      POSTGRES_DB: billing_db
+    ports:
+      - "5433:5432"
+    volumes:
+      - billing_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U billing -d billing_db" ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  order_service:
+    build:
+      context: .
+      dockerfile: order_service/Dockerfile
+    container_name: order_service
+    restart: on-failure
+    depends_on:
+      postgres_order:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    ports:
+      - "50051:50051"
+      - "9094:9094"
+    env_file:
+      - ./order_service/.env
+
+  billing_service:
+    build:
+      context: .
+      dockerfile: billing_service/Dockerfile
+    container_name: billing_service
+    restart: on-failure
+    depends_on:
+      postgres_billing:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    ports:
+      - "50052:50052"
+      - "9093:9093"
+    env_file:
+      - ./billing_service/.env
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./alerts.yml:/etc/prometheus/alerts.yml
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+
+volumes:
+  order_data:
+  billing_data:
+  prometheus_data:
+  grafana_data:
