@@ -26,7 +26,7 @@ jobs:
 
       - name: Test
         working-directory: order_service
-        run: go test ./... -v -cover
+        run: go test ./... -v -coverprofile=coverage.out
 
   billing-service:
     name: Billing Service
@@ -47,4 +47,4 @@ jobs:
 
       - name: Test
         working-directory: billing_service
-        run: go test ./... -v -cover
+        run: go test ./... -v -coverprofile=coverage.out
